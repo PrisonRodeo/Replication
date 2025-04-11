@@ -1,0 +1,1014 @@
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+#        NV Legislature Project - PRQ R&R Code            ####
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+#
+# Code for the PRQ R&R (November 2024).
+#
+# Edited 11/27/2024, using R 4.4.2 and RStudio 2024.09.1+394.
+#
+# Re-edited (a tiny bit) for the second R&R, 3/10/2025.
+#
+# The first part of this code is effectively identical to
+# "WPSA-2024.Regressions.R," and replicates the "main"
+# analyses in the PRQ paper "Legislating in the First 
+# Female-Majority State Legislature: Gendered Power,
+# Leadership, and Patterns of Sponsorship and Cosponsorship"
+# -- which is to say, all of the figures EXCEPT FIGURE 1
+# (that code starts around line 80) and the regressions in 
+# Tables 1 and 2 (that code starts around line 435).
+#
+# The second part, starting around line 540, contains code
+# for the various sensitivity / ancillary analyses that
+# the reviewers at PRQ asked for. Most of the results of that
+# code are highlighted in various footnotes in the
+# revised paper, and/or in the memo to the reviewers that
+# was sent to PRQ when the paper was resubmitted.
+#
+# So... let's get started.
+#
+# setwd():
+
+setwd("~/Dropbox (Personal)/NV") # <-- edit as required
+
+# Load some packages (this is perhaps a bit redundant,
+# but it works):
+
+P<-c("RCurl","readr","rvest","tidyverse","lubridate",
+     "plm","stargazer","stringr","tools","sjPlot",
+     "psych","marginaleffects")
+
+for (j in 1:10) {
+  for (i in 1:length(P)) {
+    ifelse(!require(P[i],character.only=TRUE),install.packages(P[i]),
+           print(":)"))
+    library(P[i],character.only=TRUE)
+  }
+  rm(P,i)
+}
+rm(j)
+
+# Options:
+
+options(scipen = 9) # bias against scientific notation
+options(digits = 4) # show fewer decimal places
+
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+# Part I: The Stuff Previously In The Paper               ####
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+#  Read the data...                                       ####
+#
+# Note that if you have local copies of "Data/WPSA-V24.csv"
+# and "WPSA-Bills-V24.csv," you can run this code. If not, 
+# YOU HAVE TO RUN the following things before this code 
+# will work:
+#
+# source("Code/NV-Data-Cleaning.R")
+# source("Code/NewGenderfy.R")
+# source("Code/WPSA-2024-Data-Setup.R")
+#-=-=-=-=-=-=-=-=
+
+WPSA<-read.csv("Data/WPSA-V24.csv")
+Bills<-read.csv("Data/WPSA-Bills-V24.csv")
+
+# Make a "Year" variable:
+
+WPSA$Year<-(WPSA$session*2)+1859
+Bills$Year<-(Bills$Session*2)+1859
+
+# Session labels:
+
+SessLabs<-c("77th","78th","79th","80th","81st","82nd")
+
+
+#  pIctUrEZ, using the legislator/session data...         ####
+#
+# Mean number of bills cosponsored, by party + gender +
+# session:
+
+foo<-aggregate(NBillsCosponsored~Year+GOP+DEM+Female,
+               data=WPSA,mean)
+
+pdf("WPSA24/CosponsorFigure.pdf",6,5)
+par(mar=c(4,4,2,2))
+with(foo[foo$Female==0 & foo$DEM==1,],
+     plot(Year,NBillsCosponsored,t="l",lwd=2,xaxt="n",
+          col="darkblue",ylim=c(20,100),xlim=c(2012,2024),
+          xlab="Year",ylab="Mean Number of Bills Cosponsored"))
+axis(1,at=seq(2012,2024,by=2))
+with(foo[foo$Female==1 & foo$DEM==1,],
+     lines(Year,NBillsCosponsored,lwd=2,
+           col="darkblue",lty=2))
+with(foo[foo$Female==0 & foo$GOP==1,],
+     lines(Year,NBillsCosponsored,lwd=2,
+           col="red"))
+with(foo[foo$Female==1 & foo$GOP==1,],
+     lines(Year,NBillsCosponsored,lwd=2,
+           col="red",lty=2))
+legend("topright",bty="n",lwd=2,lty=c(1,2,1,2),
+       col=c("darkblue","darkblue","red","red"),
+       legend=c("Democratic Men","Democratic Women",
+                "GOP Men","GOP Women"))
+dev.off()
+
+# Same thing with the mean number of first-sponsorships:
+
+bar<-aggregate(NBillsPrimary~Year+GOP+DEM+Female,
+               data=WPSA,mean)
+
+pdf("WPSA24/PrimarySponsorFigure.pdf",6,5)
+par(mar=c(4,4,2,2))
+with(bar[bar$Female==0 & bar$DEM==1,],
+     plot(Year,NBillsPrimary,t="l",lwd=2,xaxt="n",
+          col="darkblue",ylim=c(4,17),xlim=c(2013,2023),
+          xlab="Year",ylab="Mean Number of Bills as Primary Sponsor"))
+axis(1,at=seq(2013,2023,by=2))
+with(bar[bar$Female==1 & bar$DEM==1,],
+     lines(Year,NBillsPrimary,lwd=2,
+           col="darkblue",lty=2))
+with(bar[bar$Female==0 & bar$GOP==1,],
+     lines(Year,NBillsPrimary,lwd=2,
+           col="red"))
+with(bar[bar$Female==1 & bar$GOP==1,],
+     lines(Year,NBillsPrimary,lwd=2,
+           col="red",lty=2))
+legend("topleft",bty="n",lwd=2,lty=c(1,2,1,2),
+       col=c("darkblue","darkblue","red","red"),
+       legend=c("Democratic Men","Democratic Women",
+                "GOP Men","GOP Women"))
+dev.off()
+
+
+# Same thing with the median position of sponsorship:
+
+baz<-aggregate(MedianPos~Year+GOP+DEM+Female,
+               data=WPSA,median)
+baz$MedianPos<-ifelse(baz$Year==2009,NA,baz$MedianPos)
+baz$MedianPos<-ifelse(baz$Year==2011,NA,baz$MedianPos)
+
+pdf("WPSA24/MedianPosFigure.pdf",6,5)
+par(mar=c(4,4,2,2))
+with(baz[baz$Female==0 & baz$DEM==1,],
+     plot(Year,MedianPos,t="l",lwd=2,xaxt="n",
+          col="darkblue",ylim=c(3,9),xlim=c(2013,2023),
+          xlab="Year",ylab="Median Sponsorship Position"))
+axis(1,at=seq(2013,2023,by=2))
+with(baz[baz$Female==1 & baz$DEM==1,],
+     lines(Year,MedianPos,lwd=2,
+           col="darkblue",lty=2))
+with(baz[baz$Female==0 & baz$GOP==1,],
+     lines(Year,MedianPos,lwd=2,
+           col="red"))
+with(baz[baz$Female==1 & baz$GOP==1,],
+     lines(Year,MedianPos,lwd=2,
+           col="red",lty=2))
+legend("topright",bty="n",lwd=2,lty=c(1,2,1,2),
+       col=c("darkblue","darkblue","red","red"),
+       legend=c("Democratic Men","Democratic Women",
+                "GOP Men","GOP Women"))
+dev.off()
+
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=
+# Now the bills data...
+#
+# Proportion of bills sponsored by women,
+# 2013-2023, by party:
+
+qux<-aggregate(SponsorFemale~Year+SponsorGOP+SponsorDem,
+               data=Bills,mean)
+
+pdf("WPSA24/PropFemaleSponsored.pdf",6,5)
+par(mar=c(4,6,2,2))
+with(qux[qux$SponsorDem==1,],
+     plot(Year,SponsorFemale,t="l",lwd=2,xaxt="n",
+          col="darkblue",ylim=c(0,0.8),xlim=c(2013,2023),
+          xlab="Year",ylab="Proportion of Bills with Female\nPrimary Sponsors"))
+axis(1,at=seq(2013,2023,by=2))
+with(qux[qux$SponsorGOP==1,],
+     lines(Year,SponsorFemale,lwd=2,
+           lty=2,col="red"))
+legend("topleft",bty="n",lwd=2,lty=c(1,2),
+       col=c("darkblue","red"),
+       legend=c("Democrats","Republicans"))
+dev.off()
+
+# Overall bipartisanship:
+
+Bills$BiPartBill<-with(Bills,
+                       ifelse(NDems>0 & NGOPs>0,1,0))
+
+quux<-aggregate(BiPartBill~Year+SponsorGOP+SponsorDem+SponsorFemale,
+                data=Bills,mean)
+
+pdf("WPSA24/PropBipartisan.pdf",6,5)
+par(mar=c(4,6,2,2))
+with(quux[quux$SponsorFemale==0 & quux$SponsorDem==1,],
+     plot(Year,BiPartBill,t="l",lwd=2,xaxt="n",
+          col="darkblue",ylim=c(0,0.6),xlim=c(2013,2023),
+          xlab="Year",ylab="Proportion of Bipartisan Bills"))
+axis(1,at=seq(2013,2023,by=2))
+with(quux[quux$SponsorFemale==1 & quux$SponsorDem==1,],
+     lines(Year,BiPartBill,lwd=2,
+           col="darkblue",lty=2))
+with(quux[quux$SponsorFemale==0 & quux$SponsorGOP==1,],
+     lines(Year,BiPartBill,lwd=2,
+           col="red"))
+with(quux[quux$SponsorFemale==1 & quux$SponsorGOP==1,],
+     lines(Year,BiPartBill,lwd=2,
+           col="red",lty=2))
+legend("topright",bty="n",lwd=2,lty=c(1,2,1,2),
+       col=c("darkblue","darkblue","red","red"),
+       legend=c("Democratic Men","Democratic Women",
+                "GOP Men","GOP Women"))
+dev.off()
+
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+# Now add leadership...
+#
+# Some FACTS...
+#
+# Proportion of leadership that are female:
+
+LEAD1<-aggregate(LittleLeader~Year+Female+GOP,data=WPSA,mean)
+
+pdf("WPSA24/PropLeaders.pdf",6,5)
+par(mar=c(4,6,2,2))
+with(LEAD1[LEAD1$Female==0 & LEAD1$GOP==0,],
+     plot(Year,LittleLeader,t="l",lwd=2,xaxt="n",
+          col="darkblue",ylim=c(0,0.8),xlim=c(2013,2023),
+          xlab="Year",ylab="Proportion of Leaders"))
+axis(1,at=seq(2013,2023,by=2))
+with(LEAD1[LEAD1$Female==1 & LEAD1$GOP==0,],
+     lines(Year,LittleLeader,lwd=2,
+           col="darkblue",lty=2))
+with(LEAD1[LEAD1$Female==0 & LEAD1$GOP==1,],
+     lines(Year,LittleLeader,lwd=2,
+           col="red"))
+with(LEAD1[LEAD1$Female==1 & LEAD1$GOP==1,],
+     lines(Year,LittleLeader,lwd=2,
+           col="red",lty=2))
+legend("topleft",bty="n",lwd=2,lty=c(1,2,1,2),
+       col=c("darkblue","darkblue","red","red"),
+       legend=c("Democratic Men","Democratic Women",
+                "GOP Men","GOP Women"))
+dev.off()
+
+# ADDED November 2024: Let's make a better / higher-res
+# version of that, as a native PNG file:
+
+LEAD1<-aggregate(LittleLeader~Year+Female+GOP,data=WPSA,mean)
+
+png("PRQ/figz/PropLeaders.png",1800,1500,res=300)
+par(mar=c(4,6,2,2))
+with(LEAD1[LEAD1$Female==0 & LEAD1$GOP==0,],
+     plot(Year,LittleLeader,t="l",lwd=2,xaxt="n",
+          col="darkblue",ylim=c(0,0.8),xlim=c(2013,2023),
+          xlab="Year",ylab="Proportion of Leaders"))
+axis(1,at=seq(2013,2023,by=2))
+with(LEAD1[LEAD1$Female==1 & LEAD1$GOP==0,],
+     lines(Year,LittleLeader,lwd=2,
+           col="darkblue",lty=2))
+with(LEAD1[LEAD1$Female==0 & LEAD1$GOP==1,],
+     lines(Year,LittleLeader,lwd=2,
+           col="red"))
+with(LEAD1[LEAD1$Female==1 & LEAD1$GOP==1,],
+     lines(Year,LittleLeader,lwd=2,
+           col="red",lty=2))
+legend("topleft",bty="n",lwd=2,lty=c(1,2,1,2),
+       col=c("darkblue","darkblue","red","red"),
+       legend=c("Democratic Men","Democratic Women",
+                "GOP Men","GOP Women"))
+dev.off()
+
+
+# Fraction of bills sponsored by women, percentage of 
+# seats held by women, and percentage of leadership 
+# positions held by women, by session:
+
+FProp<-aggregate(Female~session,mean,data=WPSA)
+
+PropFemSpon<-with(Bills, prop.table(xtabs(~SponsorFemale+Session),2))
+PropFem<-PropFemSpon[2,]*100
+names(PropFem)<-SessLabs
+
+leads<-WPSA[WPSA$LittleLeader==1,]
+FemLead<-aggregate(Female~session,mean,data=leads)
+
+pdf("WPSA24/WomenSponsorship.pdf",6.5,5)
+par(mar=c(4,4,2,2))
+plot(PropFem,xaxt="n",xlab="Session",t="l",lwd=3,ylim=c(15,70),
+     ylab="Percent",col="darkgreen")
+axis(1,at=1:6,labels=names(PropFem))
+lines(1:6,FProp$Female*100,lwd=3,lty=2,col="orange")
+lines(1:6,FemLead$Female*100,lwd=3,lty=4,col="blue")
+abline(h=50,lty=3,col="grey")
+legend("topleft",bty="n",lwd=c(3,3,3),lty=c(2,4,1),
+       col=c("orange","blue","darkgreen"),
+       legend=c("Percentage of Women in the Nevada Legislature",
+                "Percentage of Leadership Positions Held By Women",
+                "Percentage of Bills Sponsored By Women"),
+       cex=0.8)
+dev.off()
+
+# ADDED November 2024: Let's make that one a high-res
+# native PNG as well:
+
+png("PRQ/figz/WomenSponsorship.png",1800,1500,res=300)
+par(mar=c(4,4,2,2))
+plot(PropFem,xaxt="n",xlab="Session",t="l",lwd=3,ylim=c(15,70),
+     ylab="Percent",col="darkgreen")
+axis(1,at=1:6,labels=names(PropFem))
+lines(1:6,FProp$Female*100,lwd=3,lty=2,col="orange")
+lines(1:6,FemLead$Female*100,lwd=3,lty=4,col="blue")
+abline(h=50,lty=3,col="grey")
+legend("topleft",bty="n",lwd=c(3,3,3),lty=c(2,4,1),
+       col=c("orange","blue","darkgreen"),
+       legend=c("Percentage of Women in the Nevada Legislature",
+                "Percentage of Leadership Positions Held By Women",
+                "Percentage of Bills Sponsored By Women"),
+       cex=0.8)
+dev.off()
+
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=
+# Moar data stuff:
+#
+# Session variable:
+
+WPSA$Session<-WPSA$session
+
+# Make "majority party" variables (the Dems controlled in
+# all these sessions except for the 78th):
+
+WPSA$GOPMaj<-ifelse(WPSA$Year==2015,1,0)
+Bills$GOPMaj<-ifelse(Bills$Year==2015,1,0)
+
+# Percentage of cosponsors that are female:
+
+Bills$PctFemaleCos <- ((Bills$NFemale / Bills$NCosponsors) * 100)
+
+# Reduce by one if bill's primary sponsor is female:
+
+Bills$PctFemaleCos <- ifelse(Bills$SponsorFemale==1,
+                             (((Bills$NFemale-1) / Bills$NCosponsors) * 100),
+                             Bills$PctFemaleCos)
+
+#=-=-=-=
+# Indicators for whether or not a bill's sponsor was a leader or
+# not...
+#
+# Reduced data frames w/leader variables only:
+
+wpsa<-data.frame(SponsorID=WPSA$people_id,
+                 Session=WPSA$Session,
+                 LittleLeaderSponsor=WPSA$LittleLeader,
+                 BigLeaderSponsor=WPSA$BigLeader)
+
+# Merge with "Bills" data:
+
+Bills<-merge(Bills,wpsa,by=c("SponsorID","Session"),
+             all.x=TRUE,all.y=FALSE)
+rm(wpsa)
+
+# By the way: How does the mean number of cosponsors per bill
+# change across time?
+
+MeanNCos<-aggregate(NCosponsors~Year,mean,na.rm=TRUE,data=Bills)
+MeanNCos
+
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+#  Regressions!                                           ####
+#
+# Legislator-level Analyses...
+#
+# Pr(leader) -- none of these analyses find any patterns:
+
+LLeader.Leg<-glm(LittleLeader~Female*Session+GOP*GOPMaj,data=WPSA,
+                 family="binomial")
+summary(LLeader.Leg)
+
+BLeader.Leg<-glm(BigLeader~Female*Session+GOP*GOPMaj,data=WPSA,
+                 family="binomial")
+summary(BLeader.Leg)
+
+# Cosponsorship...
+#
+# Differences of means by gender:
+
+NBP.T<-t.test(NBillsPrimary~Female,data=WPSA) # N Primary
+NBC.T<-t.test(NBillsCosponsored~Female,data=WPSA) # N Cosponsored
+NBP.T
+NBC.T
+
+# Now the same by session...
+#
+# Primary:
+
+NBPTs<-matrix(nrow=nrow(table(WPSA$Session)),ncol=3,
+              dimnames=list(SessLabs,c("t","Men","Women")))
+
+for(i in 77:82) {
+  foo<-t.test(NBillsPrimary~Female,data=WPSA[WPSA$Session==i,])
+  NBPTs[i-76,1]<-foo$statistic
+  NBPTs[i-76,2]<-foo$estimate[1]
+  NBPTs[i-76,3]<-foo$estimate[2] 
+}
+
+# Cosponsored:
+
+NBCTs<-matrix(nrow=nrow(table(WPSA$Session)),ncol=3,
+              dimnames=list(SessLabs,c("t","Men","Women")))
+
+for(i in 77:82) {
+  foo<-t.test(NBillsCosponsored~Female,data=WPSA[WPSA$Session==i,])
+  NBCTs[i-76,1]<-foo$statistic
+  NBCTs[i-76,2]<-foo$estimate[1]
+  NBCTs[i-76,3]<-foo$estimate[2] 
+}
+
+# Legislator-level regressions...
+#
+# Create interaction variables (because stargazer works better
+# that way):
+
+WPSA$FemaleXSession<-WPSA$Female*WPSA$Session
+WPSA$FemaleXLeader<-WPSA$Female*WPSA$LittleLeader
+WPSA$GOPXGOPMaj<-WPSA$GOP*WPSA$GOPMaj
+
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+#  Number of Bills as Primary Sponsor (Table 1, column 1) ####
+# 
+
+PrimSpon.Leg<-glm(NBillsPrimary~Female+Session+LittleLeader+FemaleXSession+
+                    FemaleXLeader+GOP+GOPMaj+GOPXGOPMaj,data=WPSA,
+                  family="poisson")
+summary(PrimSpon.Leg)
+
+#  Number of Bills as Cosponsor (Table 1, column 2)       ####
+# 
+
+CoSpon.Leg<-glm(NBillsCosponsored~Female+Session+LittleLeader+FemaleXSession+
+                  FemaleXLeader+GOP+GOPMaj+GOPXGOPMaj,data=WPSA,
+                family="poisson")
+summary(CoSpon.Leg)
+
+#  Cosponsorship position (Table 1, column 3)             ####
+# 
+
+CospPos.Leg<-lm(MeanPos~Female+Session+LittleLeader+FemaleXSession+
+                  FemaleXLeader+GOP+GOPMaj+GOPXGOPMaj,data=WPSA)
+summary(CospPos.Leg)
+
+# Put these all together in a big nice table:
+
+varnamesL<-c("(Intercept)","Female Legislator","Legislative Session",
+             "Leadership Role","Female x Legislative Session",
+             "Female x Leadership Role","GOP Legislator",
+             "GOP Majority Session",
+             "GOP Legislator x GOP Majority Session")
+
+LegLevelTable<-tab_model(PrimSpon.Leg,CoSpon.Leg,CospPos.Leg,
+                         transform=NULL,show.ci=FALSE,
+                         show.se=TRUE,collapse.se=TRUE,
+                         p.style="stars",
+                         pred.labels=varnamesL,
+                         dv.labels=c("Primary Sponsor",
+                                     "Cosponsored",
+                                     "Cosponsor Position"))
+
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+#  Bills data regressions!                                ####
+# 
+# Make some bill-level data interactions (+ rescale session
+# variable):
+
+Bills$ScaledSession<-Bills$Session-76
+Bills$FemSponsXSession<-Bills$SponsorFemale*Bills$ScaledSession
+Bills$FemSponsXLeader<-Bills$SponsorFemale*Bills$LittleLeaderSponsor
+Bills$GOPSponsXGOPMaj<-Bills$SponsorGOP*Bills$GOPMaj
+
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+#  Number of Cosponsors (Table 2, column 1)               ####
+
+Cos.fit<-lm(log(NCosponsors)~SponsorFemale+ScaledSession+LittleLeaderSponsor+
+              FemSponsXSession+FemSponsXLeader+SponsorGOP+GOPMaj+
+              GOPSponsXGOPMaj,data=Bills)
+summary(Cos.fit)
+
+# Alternative, using Poisson (not in table...)
+
+Cos.fit2<-glm(NCosponsors~SponsorFemale+ScaledSession+LittleLeaderSponsor+
+                FemSponsXSession+FemSponsXLeader+SponsorGOP+GOPMaj+
+                GOPSponsXGOPMaj,data=Bills,
+              family="poisson")
+summary(Cos.fit2)
+
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+#  Percent cosponsors that are female (Table 2, column 1) ####
+
+FemCos.fit<-lm(PctFemaleCos~SponsorFemale+ScaledSession+LittleLeaderSponsor+
+                 FemSponsXSession+FemSponsXLeader+SponsorGOP+GOPMaj+
+                 GOPSponsXGOPMaj,data=Bills)
+summary(FemCos.fit)
+
+# MAKE A TABLE DAMMIT WHY AM I YELLING
+
+varnamesB<-c("(Intercept)","Female Sponsor","Legislative Session (77th=1)",
+             "Leader Sponsor","Female Sponsor x Session",
+             "Female Sponsor x Leader Sponsor","GOP Sponsor",
+             "GOP Majority Session",
+             "GOP Sponsor x GOP Majority Session")
+
+BillLevelTable<-tab_model(Cos.fit,FemCos.fit,
+                          transform=NULL,show.ci=FALSE,
+                          show.se=TRUE,collapse.se=TRUE,
+                          p.style="stars",
+                          pred.labels=varnamesB,
+                          dv.labels=c("Number of Cosponsors",
+                                      "Female Cosponsor Percent"))
+
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+#  Summary statistics tables (in the Appendix)            ####
+#
+# Person-level:
+
+personz<-WPSA[c("NBillsPrimary","NBillsCosponsored","MeanPos","Female","Session","LittleLeader","GOP","GOPMaj")]
+stargazer(describe(personz,fast=TRUE),type="html",summary=FALSE,
+          out="WPSA24/LegSummary.html")
+
+# Bill-level:
+
+billz<-Bills[is.na(Bills$NDems)==FALSE,]
+billz<-billz[c("NCosponsors","PctFemaleCos","SponsorFemale","Session","LittleLeaderSponsor","SponsorGOP","GOPMaj")]
+stargazer(describe(billz,fast=TRUE),type="html",summary=FALSE,
+          out="WPSA24/BillSummary.html")
+
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+# Part II: R&R Supplemental Analyses...                   ####
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+# We now come to the part of the code where we implement all
+# of the various PRQ referees' suggestions. These are set out
+# in the "PRQ R&R Things" Google Sheet; I'll refer to each 
+# thing I do here by their point number on that sheet.
+#
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+#   Point #19                                             ####
+#
+# In Table 1, column 3 (cosponsorship position), rescale the
+# variable to be *relative* rank rather than raw number...
+#
+# The analysis in T1C3 regresses the legislator's *mean*
+# cosponsorship position for that session against the
+# predictor variables. To do this, we had to go back to
+# the bill/legislator-level data and modify the outcome
+# variable. More specifically, we added two variables
+# ('MeanNormPos' and 'MedianNormPos') that are the legislator-
+# session-level averages of the "normed" cosponsorship 
+# positions of all the bills that legislator cosponsored
+# that term. Precisely:
+#
+# {{Sum_i[(Pos_lsi) / MaxPos_si]} / N_ls } * 100
+#
+# Where Pos_lsi is legislator l's cosponsorship
+# "position" (i.e., 1 if they were the first / primary
+# sponsor, 2 if they were the first listed cosponsor, 
+# 3 if they were the second listed cosponsor, etc.)
+# on bill i in session s, MaxPos_si is the total
+# number of cosponsors (including the primary sponsor)
+# on bill i in session s, and N_ls is the total number
+# of bills on which legislator l appeared as a sponsor
+# or cosponsor in session s. This number ranges (in theory)
+# from around 0 to 100; a legislator who was always the last
+# sponsor of every bill on which they appeared would
+# have a value of 100, while a legislator who was always
+# the first sponsor would have a value that would
+# approach zero. Values closer to zero thus reflect members
+# who tend to appear "earlier" in the list of sponsors;
+# in that respect, the direction of the coding is similar
+# to the original "MeanPos" variable. Those data are saved 
+# in "Data/WPSA-V24a.csv".
+#
+# Let's rerun the analysis in T1C3, using this "normed" 
+# measure.
+#
+# First, reread the data:
+
+PRQ<-read.csv("Data/WPSA-V24a.csv")
+
+# How correlated are they?
+
+with(PRQ, cor(MeanPos,MeanNormPos,use="complete.obs"))
+
+# re-add the interaction and other variables:
+
+PRQ$Session<-PRQ$session               # Session
+PRQ$Year<-(PRQ$session*2)+1859         # Year
+PRQ$GOPMaj<-ifelse(PRQ$Year==2015,1,0) # GOP majority
+PRQ$FemaleXSession<-PRQ$Female*PRQ$Session
+PRQ$FemaleXLeader<-PRQ$Female*PRQ$LittleLeader
+PRQ$GOPXGOPMaj<-PRQ$GOP*PRQ$GOPMaj
+PRQ$MeanNorm100<-PRQ$MeanNormPos*100
+
+# Re-fit the model:
+
+ALTCospPos.Leg<-lm(MeanNorm100~Female+Session+LittleLeader+FemaleXSession+
+                  FemaleXLeader+GOP+GOPMaj+GOPXGOPMaj,data=PRQ)
+summary(ALTCospPos.Leg)
+
+# Language added to the paper (footnote) and the memo to this
+# effect...
+#
+#=-=-=-=-=-=-=-=-=-=-=-=
+#   Point #23                                             ####
+#
+# "The authors need recalculate standard errors for the 
+# interaction terms per Brambor, Clark, and Golder (2006)."
+#
+# Ummm... OK. I think the idea here is that we need to
+# add more specific results about the substantive /
+# statistical importance of the interaction terms.
+#
+# I'll do that using the -marginaleffects- package...
+#
+# First, re-run the models in Table 1, columns 1 & 2,
+# using normal multiplicative terms:
+
+WPSA$Gender<-ifelse(WPSA$Female==1,paste("Female"),paste("Male"))
+
+PrimSpon.Leg2<-glm(NBillsPrimary~Gender+Session+LittleLeader+Gender*Session+
+                  Gender*LittleLeader+GOP+GOPMaj+GOP*GOPMaj,data=WPSA,
+                  family="poisson")
+
+CoSpon.Leg2<-glm(NBillsCosponsored~Gender+Session+LittleLeader+
+                 Gender*Session+Gender*LittleLeader+GOP+GOPMaj+
+                 GOP*GOPMaj,data=WPSA,family="poisson")
+
+# Make a pretty plot (part I):
+
+pdf("PRQ/figz/PrimarySponsorMarginalEffects.pdf",6,5)
+plot_predictions(PrimSpon.Leg2,condition=c("Session","Gender"),
+                 gray=TRUE) + 
+  theme_classic() +
+  xlab("Legislative Session") +
+  ylab("N of Bills as Primary Sponsor") 
+dev.off()
+
+# Make another pretty plot (part II):
+
+pdf("PRQ/figz/CosponsorMarginalEffects.pdf",6,5)
+plot_predictions(CoSpon.Leg2,condition=c("Session","Gender"),
+                 gray=TRUE) + 
+  theme_classic() +
+  xlab("Legislative Session") +
+  ylab("N of Bills Cosponsored") 
+dev.off()
+
+# Now make them PNGs instead, because Word / Docs kinda
+# blows:
+
+png("PRQ/figz/PrimarySponsorMarginalEffects.png",
+    1500,1500,res=300)
+plot_predictions(PrimSpon.Leg2,condition=c("Session","Gender"),
+                 gray=TRUE) + 
+  theme_classic() +
+  xlab("Legislative Session") +
+  ylab("Number of Bills as Primary Sponsor") 
+dev.off()
+
+png("PRQ/figz/CosponsorMarginalEffects.png",
+    1500,1500,res=300)
+plot_predictions(CoSpon.Leg2,condition=c("Session","Gender"),
+                 gray=TRUE) + 
+  theme_classic() +
+  xlab("Legislative Session") +
+  ylab("Number of Bills Cosponsored") 
+dev.off()
+
+# Those go in the paper, along with a paragraph of 
+# explanation.
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+#   Point #27                                             ####
+# 
+# This is the point where Reviewer 2 thinks we need to separate
+# the analyses by chamber.
+#
+# My own take on this is that doing so is probably a dumb
+# idea, because the resulting analyses will likely be 
+# very underpowered. But, YOLO.
+#
+# Create separate data frames for Assembly and Senate:
+
+PRQ.A<-PRQ[PRQ$role=="Rep",] # Assembly (N=291)
+PRQ.S<-PRQ[PRQ$role=="Sen",] # Senate   (N=142)
+
+# Now, repeat the analyses in Tables 1 and 2, but
+# separately for each chamber:
+
+PrimSpon.Leg.A<-glm(NBillsPrimary~Female+Session+LittleLeader+FemaleXSession+
+                    FemaleXLeader+GOP+GOPMaj+GOPXGOPMaj,data=PRQ.A,
+                    family="poisson") # Primary sponsors
+
+CoSpon.Leg.A<-glm(NBillsCosponsored~Female+Session+LittleLeader+FemaleXSession+
+                  FemaleXLeader+GOP+GOPMaj+GOPXGOPMaj,data=PRQ.A,
+                  family="poisson") # Cosponsors
+
+CospPos.Leg.A<-lm(MeanPos~Female+Session+LittleLeader+FemaleXSession+
+                  FemaleXLeader+GOP+GOPMaj+GOPXGOPMaj,data=PRQ.A)
+                              # Cosponsor position
+
+PrimSpon.Leg.S<-glm(NBillsPrimary~Female+Session+LittleLeader+FemaleXSession+
+                      FemaleXLeader+GOP+GOPMaj+GOPXGOPMaj,data=PRQ.S,
+                    family="poisson") # Primary sponsors
+
+CoSpon.Leg.S<-glm(NBillsCosponsored~Female+Session+LittleLeader+FemaleXSession+
+                    FemaleXLeader+GOP+GOPMaj+GOPXGOPMaj,data=PRQ.S,
+                  family="poisson") # Cosponsors
+
+CospPos.Leg.S<-lm(MeanPos~Female+Session+LittleLeader+FemaleXSession+
+                    FemaleXLeader+GOP+GOPMaj+GOPXGOPMaj,data=PRQ.S)
+                             # Cosponsor position
+
+# Now let's put all those together into a single big
+# table, and see what a mess it is:
+
+varnamesL<-c("(Intercept)","Female Legislator","Legislative Session",
+             "Leadership Role","Female x Legislative Session",
+             "Female x Leadership Role","GOP Legislator",
+             "GOP Majority Session",
+             "GOP Legislator x GOP Majority Session")
+
+LegLevelTable2<-tab_model(PrimSpon.Leg.A,PrimSpon.Leg.S,
+                         CoSpon.Leg.A,CoSpon.Leg.S,
+                         CospPos.Leg.A,CospPos.Leg.S,
+                         transform=NULL,show.ci=FALSE,
+                         show.se=TRUE,collapse.se=TRUE,
+                         p.style="stars",
+                         pred.labels=varnamesL,
+                         dv.labels=c("Primary (Assembly)",
+                                     "Primary (Senate)",
+                                     "Cosponsored (Assembly)",
+                                     "Cosponsored (Senate)",
+                                     "Position (Assembly)",
+                                     "Position (Senate)"))
+
+# Note: We are NOT going to repeat that for the bills-level 
+# analysis. See the footnote in the paper and the memo to
+# reviewers for how I handled this...
+#
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+#   Points #28-29                                         ####
+# 
+# OK, this is the one where R2 wants us to swap out
+# the Session variable for one that measures the 
+# proportion of women in the chamber. What's funny is 
+# that that variable only has a few values, so we
+# start by aggregating the data, then merging it back:
+
+PctFemale<-aggregate(Female~Session+role,data=PRQ,FUN=mean)
+PctFemale$PropFemale<-PctFemale$Female
+PctFemale$Female<-NULL
+
+# Merge back into PRQ data:
+
+PRQ<-merge(PRQ,PctFemale,by=c("Session","role"))
+
+# Re-run analyses in Table 1...
+
+PRQ$FemaleXPropFem<-PRQ$Female*PRQ$PropFemale
+
+# Primary sponsors:
+
+PrimSpon.Leg.PctF<-glm(NBillsPrimary~Female+PropFemale+LittleLeader+
+                   FemaleXPropFem+FemaleXLeader+GOP+GOPMaj+GOPXGOPMaj,
+                   data=PRQ,family="poisson")
+summary(PrimSpon.Leg.PctF)
+
+# Cosponsors:
+
+CoSpon.Leg.PctF<-glm(NBillsCosponsored~Female+PropFemale+LittleLeader+
+                 FemaleXPropFem+FemaleXLeader+GOP+GOPMaj+GOPXGOPMaj,
+                 data=PRQ,family="poisson")
+summary(CoSpon.Leg.PctF)
+
+# Cosponsor position:
+
+CospPos.Leg.PctF<-lm(MeanPos~Female+PropFemale+LittleLeader+FemaleXPropFem+
+                  FemaleXLeader+GOP+GOPMaj+GOPXGOPMaj,data=PRQ)
+summary(CospPos.Leg.PctF)
+
+# Wrap those up in a table:
+
+varnamesL<-c("(Intercept)","Female Legislator","Proportion Female",
+             "Leadership Role","Female Legislator x Proportion Female",
+             "Female x Leadership Role","GOP Legislator",
+             "GOP Majority Session",
+             "GOP Legislator x GOP Majority Session")
+
+LegLevelTable2<-tab_model(PrimSpon.Leg.PctF,CoSpon.Leg.PctF,
+                         CospPos.Leg.PctF,
+                         transform=NULL,show.ci=FALSE,
+                         show.se=TRUE,collapse.se=TRUE,
+                         p.style="stars",
+                         pred.labels=varnamesL,
+                         dv.labels=c("Primary Sponsor",
+                                     "Cosponsored",
+                                     "Cosponsor Position"))
+
+# Now do the same for Table 2. BUT to do that, we need to
+# know the chamber that the bill was introduced into. That
+# means we need to take the role (Rep or Sen) of the bill's
+# SponsorID and map it onto the Bills data...
+#
+# Make that data:
+
+SponsorRoles<-with(AllPeople,
+                   data.frame(SponsorID=people_id,
+                              role=role))
+
+# Merge with Bills data:
+
+Bills2<-merge(Bills,SponsorRoles,by=c("SponsorID"))
+
+# Merge in the Prop. Female variable:
+
+Bills2<-merge(Bills2,PctFemale,by=c("Session","role"))
+
+# Aaaaaand rerun the analyses in Table 2:
+
+Bills2$FemSponsXPctF<-Bills2$SponsorFemale*Bills2$PropFemale
+Bills2$FemSponsXLeader<-Bills2$SponsorFemale*Bills2$LittleLeaderSponsor
+Bills2$GOPSponsXGOPMaj<-Bills2$SponsorGOP*Bills2$GOPMaj
+
+# Log-cosponsors:
+
+Cos.fit.PctF<-lm(log(NCosponsors)~SponsorFemale+PropFemale+LittleLeaderSponsor+
+              FemSponsXPctF+FemSponsXLeader+SponsorGOP+GOPMaj+
+              GOPSponsXGOPMaj,data=Bills2)
+summary(Cos.fit.PctF)
+
+# Female cosponsor percentage:
+
+FemCos.fit.PctF<-lm(PctFemaleCos~SponsorFemale+PropFemale+LittleLeaderSponsor+
+                 FemSponsXPctF+FemSponsXLeader+SponsorGOP+GOPMaj+
+                 GOPSponsXGOPMaj,data=Bills2)
+summary(FemCos.fit.PctF)
+
+# Make the table:
+
+varnamesB<-c("(Intercept)","Female Sponsor","Proportion Female",
+             "Leader Sponsor","Female Sponsor x Proportion Female",
+             "Female Sponsor x Leader Sponsor","GOP Sponsor",
+             "GOP Majority Session",
+             "GOP Sponsor x GOP Majority Session")
+
+BillLevelTable2<-tab_model(Cos.fit.PctF,FemCos.fit.PctF,
+                          transform=NULL,show.ci=FALSE,
+                          show.se=TRUE,collapse.se=TRUE,
+                          p.style="stars",
+                          pred.labels=varnamesB,
+                          dv.labels=c("Number of Cosponsors",
+                                      "Female Cosponsor Percent"))
+
+# Now, look, if we're going to roll with that, we need to
+# revise the plots in Figure 4 as well.
+#
+# Make a new pretty plot (part I):
+
+PRQ$Gender<-ifelse(PRQ$Female==1,paste("Female"),paste("Male"))
+
+PrimSpon.Leg.PctF2<-glm(NBillsPrimary~Gender+PropFemale+LittleLeader+
+                    Gender*PropFemale+Gender*LittleLeader+GOP+GOPMaj+
+                    GOP*GOPMaj,data=PRQ,family="poisson")
+
+CoSpon.Leg.PctF2<-glm(NBillsCosponsored~Gender+PropFemale+LittleLeader+
+                   Gender*PropFemale+Gender*LittleLeader+GOP+GOPMaj+
+                   GOP*GOPMaj,data=PRQ,family="poisson")
+
+png("PRQ/figz/NEWPrimarySponsorMarginalEffects.png",
+    1500,1500,res=300)
+plot_predictions(PrimSpon.Leg.PctF2,
+                 condition=list("PropFemale"=0:1,"Gender"),
+                 gray=TRUE) + 
+  theme_classic() +
+  xlab("Proportion Female") +
+  ylab("Number of Bills as Primary Sponsor") 
+dev.off()
+
+png("PRQ/figz/NEWCosponsorMarginalEffects.png",
+    1500,1500,res=300)
+p<-plot_predictions(CoSpon.Leg.PctF2,
+                 condition=list("PropFemale"=0:1,"Gender"),
+                 gray=TRUE) + 
+  theme_classic() +
+  xlab("Proportion Female") +
+  ylab("Number of Bills Cosponsored") 
+dev.off()
+
+# Last thing: In Point #29, Reviewer 2 says we can now
+# "can likewise easily explore whether any nonlinear 
+# relationships exist between the numbers of women in 
+# the chamber and the behaviors that he/she is analyzing."
+#
+# Given how we've decided to go all-in on this suggestion,
+# I'm not at all sure we want to ALSO dig into some
+# atheoretical nonlinear madness. So perhaps we just...
+# *elide* that point.
+#
+# Now change the tables and Figure 4, modify the write-up 
+# in the paper, and add some language to the reviewer memo.
+#
+#=-=-=-=-=-=-=-=-=-=-=-=-=
+#   Point #30                                             ####
+# R2 wants us to "control for whether the sponsor is in 
+# the majority party, rather than his/her political 
+# party..."
+#
+# As it happens, our models already do exactly this,
+# and more.
+#
+# So I added some language to the paper (in a footnote),
+# and explained this in the memo to reviewers.
+#
+# So there's no actual code here, LOL.
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+#   Point #28-29 Implications                             ####
+#
+# Because we've changed the main two tables, we'll also
+# need to rerun the split-chamber analyses that we did in
+# the "Point 27" part above. So, here we go:
+
+PRQ.A<-PRQ[PRQ$role=="Rep",] # Assembly (N=291)
+PRQ.S<-PRQ[PRQ$role=="Sen",] # Senate   (N=142)
+
+# Now, repeat the analyses in Table 1, but separately for 
+# each chamber:
+
+PrimSpon.Leg.A<-glm(NBillsPrimary~Female+PropFemale+LittleLeader+
+                      FemaleXPropFem+FemaleXLeader+GOP+GOPMaj+
+                      GOPXGOPMaj,data=PRQ.A,family="poisson") # Primary sponsors
+
+CoSpon.Leg.A<-glm(NBillsCosponsored~Female+PropFemale+LittleLeader+FemaleXPropFem+
+                    FemaleXLeader+GOP+GOPMaj+GOPXGOPMaj,data=PRQ.A,
+                  family="poisson") # Cosponsors
+
+CospPos.Leg.A<-lm(MeanPos~Female+PropFemale+LittleLeader+FemaleXPropFem+
+                    FemaleXLeader+GOP+GOPMaj+GOPXGOPMaj,data=PRQ.A)
+# Cosponsor position
+
+PrimSpon.Leg.S<-glm(NBillsPrimary~Female+PropFemale+LittleLeader+FemaleXPropFem+
+                      FemaleXLeader+GOP+GOPMaj+GOPXGOPMaj,data=PRQ.S,
+                    family="poisson") # Primary sponsors
+
+CoSpon.Leg.S<-glm(NBillsCosponsored~Female+PropFemale+LittleLeader+FemaleXPropFem+
+                    FemaleXLeader+GOP+GOPMaj+GOPXGOPMaj,data=PRQ.S,
+                  family="poisson") # Cosponsors
+
+CospPos.Leg.S<-lm(MeanPos~Female+PropFemale+LittleLeader+
+                    FemaleXPropFem+FemaleXLeader+GOP+GOPMaj+
+                    GOPXGOPMaj,data=PRQ.S) # Cosponsor position
+
+# Now let's put all those together into a single big
+# table, and see what a mess it is:
+
+varnamesL<-c("(Intercept)","Female Legislator","Proportion Female",
+             "Leadership Role","Female Legislator x Proportion Female",
+             "Female x Leadership Role","GOP Legislator",
+             "GOP Majority Session",
+             "GOP Legislator x GOP Majority Session")
+
+LegLevelTable2<-tab_model(PrimSpon.Leg.A,PrimSpon.Leg.S,
+                          CoSpon.Leg.A,CoSpon.Leg.S,
+                          CospPos.Leg.A,CospPos.Leg.S,
+                          transform=NULL,show.ci=FALSE,
+                          show.se=TRUE,collapse.se=TRUE,
+                          p.style="stars",
+                          pred.labels=varnamesL,
+                          dv.labels=c("Primary (Assembly)",
+                                      "Primary (Senate)",
+                                      "Cosponsored (Assembly)",
+                                      "Cosponsored (Senate)",
+                                      "Position (Assembly)",
+                                      "Position (Senate)"))
+
+# We also need new summary statistics tables for the
+# appendix:
+
+personz<-PRQ[c("NBillsPrimary","NBillsCosponsored","MeanPos","Female","PropFemale","LittleLeader","GOP","GOPMaj")]
+stargazer(describe(personz,fast=TRUE),type="html",summary=FALSE,
+          out="PRQ/NewLegSummary.html")
+
+# Bill-level:
+
+billz<-Bills2[is.na(Bills2$NDems)==FALSE,]
+billz<-billz[c("NCosponsors","PctFemaleCos","SponsorFemale","PropFemale","LittleLeaderSponsor","SponsorGOP","GOPMaj")]
+stargazer(describe(billz,fast=TRUE),type="html",summary=FALSE,
+          out="PRQ/NewBillSummary.html")
+
+
+
+# OK, that was fun, I guess.
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+# Wrap-up                                                 ####
+#
+# I think that's all.
+#
+# Whew.
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=

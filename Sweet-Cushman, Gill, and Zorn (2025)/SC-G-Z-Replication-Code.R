@@ -1,0 +1,515 @@
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+# Introduction                                    ####
+#
+# This is replication data and code for:
+#
+# Sweet-Cushman, Jennie, Rebecca Gill, and Christopher
+# Zorn. 202X. "Legislating in the First Female-Majority 
+# State Legislature: Gendered Power, Leadership, and 
+# Patterns of Sponsorship and Cosponsorship." Political
+# Research Quarterly: forthcoming.
+#
+# This replication code was verified on April 10, 2025
+# using R version 4.4.3 ("Trophy Case") and RStudio
+# version 2024.12.1+563.
+#
+# File created 4/8/2025.
+#
+# File last modified 4/10/2025.
+#
+# The first part of this code describes the contents of
+# the replication archive. The second loads the packages 
+# necessary for the analyses and sets some preferences. 
+# The third part replicates the figures and tables in the
+# paper, specifically Figures 2-4 and Tables 1 and 2. The 
+# fourth part (starting around line 410) contains code for 
+# the various sensitivity / ancillary analyses referenced 
+# in the paper.
+#
+# NOTE: The data used in Figure 1 are available at 
+# https://cawp.rutgers.edu/facts/state-state-information/nevada
+# and at https://www.leg.state.nv.us.
+#
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+# Table of Contents:                              ####
+#
+# 1. What's Here                               Line 45
+#
+# 2. Loading packages, etc.                    Line 62
+#
+# 3. Paper Contents                            Line 90
+#
+# 4. Ancillary Analyses                       Line 410
+#
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+# 1. What's Here                                  ####
+#
+# This replication archive contains a total of ten 
+# files:
+#
+# - "Replication Files.Rproj," the R Project file for
+#  this archive
+# - "SC-G-Z-Replication-Code.R," this file
+# - Four data files, in .csv format, located in the
+#   "Data" subfolder
+# - Four graphics files, in .png format, located in
+#   the "Figures" subfolder.
+#
+# All of these files are necessary to replicate the
+# analyses in the paper.
+# 
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+# 2. Loading packages, etc.                       ####
+#
+# Load some packages (this is perhaps a bit redundant,
+# but it works):
+
+P<-c("RCurl","readr","rvest","tidyverse","lubridate",
+     "plm","stargazer","stringr","tools","sjPlot",
+     "psych","marginaleffects")
+
+for (j in 1:length(P)) {
+  for (i in 1:length(P)) {
+    ifelse(!require(P[i],character.only=TRUE),install.packages(P[i]),
+           print(":)"))
+    library(P[i],character.only=TRUE)
+  }
+  rm(i)
+}
+rm(P,j)
+
+# Options:
+
+options(scipen = 9) # bias against scientific notation
+options(digits = 4) # show fewer decimal places
+
+# Fun Nevada fact #1: Nevada has more named mountain
+# ranges (N=314) than any other state.
+#
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+# 3. Paper Contents                               ####
+#
+# The replication files here make use of three data
+# frames created by the authors. In the interest of 
+# brevity, those data frames will be included in the
+# replication materials. For the code that creates those
+# data frames from the "raw" data pulled from (e.g.)
+# LegiScan, please contact Christopher Zorn, at
+# zorn@psu.edu or at c.j.zorn@gmail.com.
+#
+# Read the data:
+
+WPSA<-read.csv("Data/WPSA-V24.csv")
+Bills<-read.csv("Data/WPSA-Bills-V24.csv")
+
+# Make "Year" variables:
+
+WPSA$Year<-(WPSA$session*2)+1859
+Bills$Year<-(Bills$Session*2)+1859
+
+# Create session labels:
+
+SessLabs<-c("77th","78th","79th","80th","81st","82nd")
+
+# Figure 2:
+
+LEAD1<-aggregate(LittleLeader~Year+Female+GOP,data=WPSA,mean)
+
+png("Figures/PropLeaders.png",1800,1500,res=300)
+par(mar=c(4,6,2,2))
+with(LEAD1[LEAD1$Female==0 & LEAD1$GOP==0,],
+     plot(Year,LittleLeader,t="l",lwd=2,xaxt="n",
+          col="darkblue",ylim=c(0,0.8),xlim=c(2013,2023),
+          xlab="Year",ylab="Proportion of Leaders"))
+axis(1,at=seq(2013,2023,by=2))
+with(LEAD1[LEAD1$Female==1 & LEAD1$GOP==0,],
+     lines(Year,LittleLeader,lwd=2,
+           col="darkblue",lty=2))
+with(LEAD1[LEAD1$Female==0 & LEAD1$GOP==1,],
+     lines(Year,LittleLeader,lwd=2,
+           col="red"))
+with(LEAD1[LEAD1$Female==1 & LEAD1$GOP==1,],
+     lines(Year,LittleLeader,lwd=2,
+           col="red",lty=2))
+legend("topleft",bty="n",lwd=2,lty=c(1,2,1,2),
+       col=c("darkblue","darkblue","red","red"),
+       legend=c("Democratic Men","Democratic Women",
+                "GOP Men","GOP Women"))
+dev.off()
+
+# Figure 3:
+
+FProp<-aggregate(Female~session,mean,data=WPSA)
+
+PropFemSpon<-with(Bills, prop.table(xtabs(~SponsorFemale+Session),2))
+PropFem<-PropFemSpon[2,]*100
+names(PropFem)<-SessLabs
+
+leads<-WPSA[WPSA$LittleLeader==1,]
+FemLead<-aggregate(Female~session,mean,data=leads)
+
+png("Figures/WomenSponsorship.png",1800,1500,res=300)
+par(mar=c(4,4,2,2))
+plot(PropFem,xaxt="n",xlab="Session",t="l",lwd=3,ylim=c(15,70),
+     ylab="Percent",col="darkgreen")
+axis(1,at=1:6,labels=names(PropFem))
+lines(1:6,FProp$Female*100,lwd=3,lty=2,col="orange")
+lines(1:6,FemLead$Female*100,lwd=3,lty=4,col="blue")
+abline(h=50,lty=3,col="grey")
+legend("topleft",bty="n",lwd=c(3,3,3),lty=c(2,4,1),
+       col=c("orange","blue","darkgreen"),
+       legend=c("Percentage of Women in the Nevada Legislature",
+                "Percentage of Leadership Positions Held By Women",
+                "Percentage of Bills Sponsored By Women"),
+       cex=0.8)
+dev.off()
+
+# Fun Nevada Fact #2: Nevada was the first state to
+# ratify the Fifteenth Amendment.
+#
+# Next, Table 1...
+#
+# Create a "Session" variable (capitalized):
+
+WPSA$Session<-WPSA$session
+
+# Make "majority party" variables (the Dems controlled in
+# all these sessions except for the 78th):
+
+WPSA$GOPMaj<-ifelse(WPSA$Year==2015,1,0)
+Bills$GOPMaj<-ifelse(Bills$Year==2015,1,0)
+
+# Percentage of cosponsors that are female:
+
+Bills$PctFemaleCos <- ((Bills$NFemale / Bills$NCosponsors) * 100)
+
+# Reduce by one if bill's primary sponsor is female:
+
+Bills$PctFemaleCos <- ifelse(Bills$SponsorFemale==1,
+                             (((Bills$NFemale-1) / Bills$NCosponsors) * 100),
+                             Bills$PctFemaleCos)
+
+# Next, create indicators for whether or not a bill's 
+# sponsor was a leader or not...
+#
+# Create reduced data frames w/leader variables only:
+
+wpsa<-data.frame(SponsorID=WPSA$people_id,
+                 Session=WPSA$Session,
+                 LittleLeaderSponsor=WPSA$LittleLeader,
+                 BigLeaderSponsor=WPSA$BigLeader)
+
+# Merge with "Bills" data:
+
+Bills<-merge(Bills,wpsa,by=c("SponsorID","Session"),
+             all.x=TRUE,all.y=FALSE)
+rm(wpsa)
+
+# By the way: How does the mean number of cosponsors per bill
+# change across time?
+#
+# MeanNCos<-aggregate(NCosponsors~Year,mean,na.rm=TRUE,data=Bills)
+# MeanNCos
+#
+# Legislator-level analyses...
+#
+# Cosponsorship: differences of means by gender:
+
+NBP.T<-t.test(NBillsPrimary~Female,data=WPSA) # N Primary
+NBC.T<-t.test(NBillsCosponsored~Female,data=WPSA) # N Cosponsored
+NBP.T
+NBC.T
+
+# Now the same by session...
+#
+# Primary:
+
+NBPTs<-matrix(nrow=nrow(table(WPSA$Session)),ncol=3,
+              dimnames=list(SessLabs,c("t","Men","Women")))
+
+for(i in 77:82) {
+  foo<-t.test(NBillsPrimary~Female,data=WPSA[WPSA$Session==i,])
+  NBPTs[i-76,1]<-foo$statistic
+  NBPTs[i-76,2]<-foo$estimate[1]
+  NBPTs[i-76,3]<-foo$estimate[2] 
+}
+
+# Cosponsored:
+
+NBCTs<-matrix(nrow=nrow(table(WPSA$Session)),ncol=3,
+              dimnames=list(SessLabs,c("t","Men","Women")))
+
+for(i in 77:82) {
+  foo<-t.test(NBillsCosponsored~Female,data=WPSA[WPSA$Session==i,])
+  NBCTs[i-76,1]<-foo$statistic
+  NBCTs[i-76,2]<-foo$estimate[1]
+  NBCTs[i-76,3]<-foo$estimate[2] 
+}
+
+# Regressions!
+#
+# Read the member-level "a" data, which updates things a bit:
+
+PRQ<-read.csv("Data/WPSA-V24a.csv")
+
+# Add the interaction variables:
+
+PRQ$Session<-PRQ$session               # Session
+PRQ$Year<-(PRQ$session*2)+1859         # Year
+PRQ$GOPMaj<-ifelse(PRQ$Year==2015,1,0) # GOP majority
+PRQ$FemaleXSession<-PRQ$Female*PRQ$Session
+PRQ$FemaleXLeader<-PRQ$Female*PRQ$LittleLeader
+PRQ$GOPXGOPMaj<-PRQ$GOP*PRQ$GOPMaj
+PRQ$MeanNorm100<-PRQ$MeanNormPos*100
+
+# Create the variable that measures the proportion of
+# women in the chamber:
+
+PctFemale<-aggregate(Female~Session+role,data=PRQ,FUN=mean)
+PctFemale$PropFemale<-PctFemale$Female
+PctFemale$Female<-NULL
+
+# Merge back into PRQ data:
+
+PRQ<-merge(PRQ,PctFemale,by=c("Session","role"))
+
+# Add interaction:
+
+PRQ$FemaleXPropFem<-PRQ$Female*PRQ$PropFemale
+
+#  Number of Bills as Primary Sponsor (Table 1, column 1):
+
+PrimSpon.Leg.PctF<-glm(NBillsPrimary~Female+PropFemale+LittleLeader+
+                         FemaleXPropFem+FemaleXLeader+GOP+GOPMaj+GOPXGOPMaj,
+                       data=PRQ,family="poisson")
+summary(PrimSpon.Leg.PctF)
+
+# Cosponsors (Table 1, column 2):
+
+CoSpon.Leg.PctF<-glm(NBillsCosponsored~Female+PropFemale+LittleLeader+
+                       FemaleXPropFem+FemaleXLeader+GOP+GOPMaj+GOPXGOPMaj,
+                     data=PRQ,family="poisson")
+summary(CoSpon.Leg.PctF)
+
+# Cosponsor position (Table 1, column 3):
+
+CospPos.Leg.PctF<-lm(MeanPos~Female+PropFemale+LittleLeader+FemaleXPropFem+
+                       FemaleXLeader+GOP+GOPMaj+GOPXGOPMaj,data=PRQ)
+summary(CospPos.Leg.PctF)
+
+# Wrap those up in a table:
+
+varnamesL<-c("(Intercept)","Female Legislator","Proportion Female",
+             "Leadership Role","Female Legislator x Proportion Female",
+             "Female x Leadership Role","GOP Legislator",
+             "GOP Majority Session",
+             "GOP Legislator x GOP Majority Session")
+
+LegLevelTable<-tab_model(PrimSpon.Leg.PctF,CoSpon.Leg.PctF,
+                          CospPos.Leg.PctF,
+                          transform=NULL,show.ci=FALSE,
+                          show.se=TRUE,collapse.se=TRUE,
+                          p.style="stars",
+                          pred.labels=varnamesL,
+                          dv.labels=c("Primary Sponsor",
+                                      "Cosponsored",
+                                      "Cosponsor Position"))
+
+# Fun Nevada fact #3: Nevada is the home to the majority
+# of the U.S.'s wild horse population.
+#
+# Figure 4 (marginal effects from Table 1):
+
+PRQ$Gender<-ifelse(PRQ$Female==1,paste("Female"),paste("Male"))
+
+PrimSpon.Leg.PctF2<-glm(NBillsPrimary~Gender+PropFemale+LittleLeader+
+                          Gender*PropFemale+Gender*LittleLeader+GOP+GOPMaj+
+                          GOP*GOPMaj,data=PRQ,family="poisson")
+
+CoSpon.Leg.PctF2<-glm(NBillsCosponsored~Gender+PropFemale+LittleLeader+
+                        Gender*PropFemale+Gender*LittleLeader+GOP+GOPMaj+
+                        GOP*GOPMaj,data=PRQ,family="poisson")
+
+png("Figures/PrimarySponsorMarginalEffects.png",
+    1500,1500,res=300)
+plot_predictions(PrimSpon.Leg.PctF2,
+                 condition=list("PropFemale"=0:1,"Gender"),
+                 gray=TRUE) + 
+  theme_classic() +
+  xlab("Proportion Female") +
+  ylab("Number of Bills as Primary Sponsor") 
+dev.off()
+
+png("Figures/CosponsorMarginalEffects.png",
+    1500,1500,res=300)
+plot_predictions(CoSpon.Leg.PctF2,
+                    condition=list("PropFemale"=0:1,"Gender"),
+                    gray=TRUE) + 
+  theme_classic() +
+  xlab("Proportion Female") +
+  ylab("Number of Bills Cosponsored") 
+dev.off()
+
+# Table 2:
+#
+# Map the role (Assemblyperson or Senator) of each
+# bill's sponsor to the bill, so that we know which
+# chamber it was introduced in:
+
+AllPeople<-read.csv("Data/AllPeople.csv")
+
+SponsorRoles<-with(AllPeople,
+                   data.frame(SponsorID=people_id,
+                              role=role))
+
+# Merge with Bills data:
+
+Bills2<-merge(Bills,SponsorRoles,by=c("SponsorID"))
+
+# Merge in the Prop. Female variable:
+
+Bills2<-merge(Bills2,PctFemale,by=c("Session","role"))
+
+# ...aaaaand run the analyses in Table 2:
+
+Bills2$FemSponsXPctF<-Bills2$SponsorFemale*Bills2$PropFemale
+Bills2$FemSponsXLeader<-Bills2$SponsorFemale*Bills2$LittleLeaderSponsor
+Bills2$GOPSponsXGOPMaj<-Bills2$SponsorGOP*Bills2$GOPMaj
+
+# Log-cosponsors:
+
+Cos.fit.PctF<-lm(log(NCosponsors)~SponsorFemale+PropFemale+LittleLeaderSponsor+
+                   FemSponsXPctF+FemSponsXLeader+SponsorGOP+GOPMaj+
+                   GOPSponsXGOPMaj,data=Bills2)
+summary(Cos.fit.PctF)
+
+# Female cosponsor percentage:
+
+FemCos.fit.PctF<-lm(PctFemaleCos~SponsorFemale+PropFemale+LittleLeaderSponsor+
+                      FemSponsXPctF+FemSponsXLeader+SponsorGOP+GOPMaj+
+                      GOPSponsXGOPMaj,data=Bills2)
+summary(FemCos.fit.PctF)
+
+# Make the table:
+
+varnamesB<-c("(Intercept)","Female Sponsor","Proportion Female",
+             "Leader Sponsor","Female Sponsor x Proportion Female",
+             "Female Sponsor x Leader Sponsor","GOP Sponsor",
+             "GOP Majority Session",
+             "GOP Sponsor x GOP Majority Session")
+
+BillLevelTable2<-tab_model(Cos.fit.PctF,FemCos.fit.PctF,
+                           transform=NULL,show.ci=FALSE,
+                           show.se=TRUE,collapse.se=TRUE,
+                           p.style="stars",
+                           pred.labels=varnamesB,
+                           dv.labels=c("Number of Cosponsors",
+                                       "Female Cosponsor Percent"))
+
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+# 4. Ancillary Analyses                           ####
+#
+# The rest of this file is replication code for the
+# various robustness checks that were mentioned in
+# the paper. If you're only interested in replicating 
+# what is in the paper itself, all of that is in part
+# 3, above.
+#
+# A. In footnote 10, we discuss the use of a "normed"
+# cosponsorship position variable. Precisely, that is:
+#
+# {{Sum_i[(Pos_lsi) / MaxPos_si]} / N_ls } * 100
+#
+# ...where Pos_lsi is legislator l's cosponsorship
+# "position" (i.e., 1 if they were the first / primary
+# sponsor, 2 if they were the first listed cosponsor, 
+# 3 if they were the second listed cosponsor, etc.)
+# on bill i in session s, MaxPos_si is the total
+# number of cosponsors (including the primary sponsor)
+# on bill i in session s, and N_ls is the total number
+# of bills on which legislator l appeared as a sponsor
+# or cosponsor in session s. This number ranges (in theory)
+# from around 0 to 100; a legislator who was always the last
+# sponsor of every bill on which they appeared would
+# have a value of 100, while a legislator who was always
+# the first sponsor would have a value that would
+# approach zero. Values closer to zero thus reflect members
+# who tend to appear "earlier" in the list of sponsors;
+# in that respect, the direction of the coding is similar
+# to the original "MeanPos" variable.
+#
+# How correlated are the normed and un-normed measures?
+
+with(PRQ, cor(MeanPos,MeanNormPos,use="complete.obs"))
+
+# What do the alternative regression results using this
+# measure look like?
+
+ALTCospPos.Leg.PctF<-lm(MeanNorm100~Female+PropFemale+LittleLeader+
+                     FemaleXPropFem+FemaleXLeader+GOP+GOPMaj+GOPXGOPMaj,
+                     data=PRQ)
+summary(ALTCospPos.Leg.PctF)
+
+# B. In footnote 13, we indicated that we fit separate,
+# chamber-specific models for the analyses in Table 1, and
+# that those results are available in the replication 
+# materials. Here are those analyses.
+#
+# Separate data frames for Assembly and Senate:
+
+PRQ.A<-PRQ[PRQ$role=="Rep",] # Assembly (N=291)
+PRQ.S<-PRQ[PRQ$role=="Sen",] # Senate   (N=142)
+
+# Now, repeat the analyses in Table 1, but separately for 
+# each chamber; first, Assembly:
+
+PrimSpon.Leg.A<-glm(NBillsPrimary~Female+PropFemale+LittleLeader+
+                      FemaleXPropFem+FemaleXLeader+GOP+GOPMaj+
+                      GOPXGOPMaj,data=PRQ.A,family="poisson") # Primary sponsors
+
+CoSpon.Leg.A<-glm(NBillsCosponsored~Female+PropFemale+LittleLeader+FemaleXPropFem+
+                    FemaleXLeader+GOP+GOPMaj+GOPXGOPMaj,data=PRQ.A,
+                  family="poisson") # Cosponsors
+
+CospPos.Leg.A<-lm(MeanPos~Female+PropFemale+LittleLeader+FemaleXPropFem+
+                    FemaleXLeader+GOP+GOPMaj+GOPXGOPMaj,data=PRQ.A)
+
+# ...then Senate:
+
+PrimSpon.Leg.S<-glm(NBillsPrimary~Female+PropFemale+LittleLeader+FemaleXPropFem+
+                      FemaleXLeader+GOP+GOPMaj+GOPXGOPMaj,data=PRQ.S,
+                    family="poisson") # Primary sponsors
+
+CoSpon.Leg.S<-glm(NBillsCosponsored~Female+PropFemale+LittleLeader+FemaleXPropFem+
+                    FemaleXLeader+GOP+GOPMaj+GOPXGOPMaj,data=PRQ.S,
+                  family="poisson") # Cosponsors
+
+CospPos.Leg.S<-lm(MeanPos~Female+PropFemale+LittleLeader+
+                    FemaleXPropFem+FemaleXLeader+GOP+GOPMaj+
+                    GOPXGOPMaj,data=PRQ.S) # Cosponsor position
+
+# Now let's put all those together into a single big
+# table:
+
+varnamesL<-c("(Intercept)","Female Legislator","Proportion Female",
+             "Leadership Role","Female Legislator x Proportion Female",
+             "Female x Leadership Role","GOP Legislator",
+             "GOP Majority Session",
+             "GOP Legislator x GOP Majority Session")
+
+LegLevelTable2<-tab_model(PrimSpon.Leg.A,PrimSpon.Leg.S,
+                          CoSpon.Leg.A,CoSpon.Leg.S,
+                          CospPos.Leg.A,CospPos.Leg.S,
+                          transform=NULL,show.ci=FALSE,
+                          show.se=TRUE,collapse.se=TRUE,
+                          p.style="stars",
+                          pred.labels=varnamesL,
+                          dv.labels=c("Primary (Assembly)",
+                                      "Primary (Senate)",
+                                      "Cosponsored (Assembly)",
+                                      "Cosponsored (Senate)",
+                                      "Position (Assembly)",
+                                      "Position (Senate)"))
+
+# /fin
+

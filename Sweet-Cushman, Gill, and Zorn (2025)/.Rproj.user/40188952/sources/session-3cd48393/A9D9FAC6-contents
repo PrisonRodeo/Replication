@@ -1,0 +1,251 @@
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+############ NV Legislature Project ######################
+#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+# Merging and munging data for the 2024 WPSA paper.
+#
+# NOTE: IN ORDER FOR ANYTHING BELOW TO WORK, you first
+# must run the "NV-DATA-CLEANING.R" and "NewGenderfy.R"
+# files. Running those files will ensure that (a) all
+# the objects necessary to do the work below are 
+# present in the global environment, and (b) that the
+# packages necessary to do all this are loaded.
+#
+# If you want to do that right from this file, do
+# a -setwd- to the "NV" folder and then run 
+# the following two lines of code:
+#
+source("Code/NV-Data-Cleaning.R")
+source("Code/NewGenderfy.R")
+#
+# Code created 3/12/2021
+#
+# Code last modified 11/26/2024
+#
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+# Maybe need to do this here?
+#
+library(dplyr)
+#
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+# We're starting by creating a dataset that has one 
+# observation per legislator per (regular) legislative 
+# session. That data will also need to have information 
+# about that legislator's cosponsorship during that 
+# session.That means that we'll need to aggregate and merge
+# data from the "sponsors" dataframes, on a per-session
+# basis.
+#
+# Down around line 160 or so we also create bill-level
+# data on (co)sponsorship...
+#
+# Note that, for comparability over time, we're only 
+# using data from "regular" NV legislative sessions, and 
+# omitting "special" sessions.
+#
+# We'll start by appending a few key variables from
+# the "people" files -- notably, party (broken into three
+# dummy variables), gender, and two leadership variables.
+# To get the leadership variables, we have to do this:
+#
+# source("Code/Make-Leadership-Data.R")
+#
+# To do this, we'll create some "smaller" versions of the
+# "people" files...I'm going to call them "PIDSEX" because 
+# I'm basically an eleven-year-old.
+
+peeps<-ls(pattern="people.L")
+
+# drop 75th and 76th session:
+
+peeps<-peeps[3:length(peeps)]
+
+for(i in 1:length(peeps)){
+  suffix<-substr(peeps[i],7,11)
+  foo<-get(peeps[i])
+  foo<-foo[foo$committee_id==0,] # remove committees
+  foo$GOP<-ifelse(foo$party=="R",1,0)
+  foo$DEM<-ifelse(foo$party=="D",1,0)
+  foo$IND<-ifelse(foo$party=="I",1,0)
+  foo<-foo[c("people_id","GOP","DEM","IND","Female")]
+  assign(paste0("PIDSEX",suffix),foo)
+  rm(foo)
+}
+
+rm(peeps)
+
+# Next, we'll merge these little dataframes with 
+# their respective cosponsorship ("sponsors")
+# files. We'll call the results of those merges
+# "SPFAX."
+
+spons<-ls(pattern="sponsors.L")
+spons<-spons[3:length(spons)] # <- drop 75th + 76th sessions
+pidsexes<-ls(pattern="PIDSEX.L")
+
+for(i in 1:length(spons)){
+  suffix<-substr(pidsexes[i],7,11)
+  foo<-get(spons[i])
+  bar<-get(pidsexes[i])
+  baz<-merge(foo,bar,by=c("people_id"),
+             all.x=FALSE,all.y=TRUE)
+  assign(paste0("SPFAX",suffix),baz)
+  rm(foo,bar,baz)
+}
+
+rm(spons,pidsexes)
+
+# The "SPFAX" objects now have the gender- and party-
+# identified sponsorship data. Note that bills that were
+# sponsored by "people_id"s that were committees 
+# (rather than individual legislators) were omitted.
+# Next we need to aggregate that to the legislator level:
+
+spfaxes<-ls(pattern="SPFAX.L")
+
+for(i in 1:length(spfaxes)){
+  suffix<-substr(spfaxes[i],6,10)
+  foo<-get(spfaxes[i])
+  foo<- foo %>% group_by(bill_id) %>% mutate(NCosponsors=max(position))
+  bar<-group_by(foo,people_id)
+  baz<-summarise(bar,
+                 NBillsCosponsored=n(),
+                 NBillsPrimary=sum(position==1,na.rm=TRUE),
+                 MeanPos=mean(position,na.rm=TRUE),
+                 MedianPos=median(position,na.rm=TRUE),
+                 MeanNormPos=mean(position/NCosponsors,na.rm=TRUE),
+                 MedianNormPos=median(position/NCosponsors,na.rm=TRUE),
+                 GOP=mean(GOP,na.rm=TRUE),
+                 DEM=mean(DEM,na.rm=TRUE),
+                 IND=mean(IND,na.rm=TRUE),
+                 Female=mean(Female,na.rm=TRUE),
+                 LittleLeader=mean(LittleLeader,na.rm=TRUE),
+                 BigLeader=mean(BigLeader,na.rm=TRUE))
+  baz$session<-as.numeric(substr(suffix,4,6))
+  assign(paste0("FLOOF",suffix),baz)
+  rm(foo,bar,baz)
+}
+
+# Now merge the "FLOOF" dataframes with cut-down versions
+# of the original "people" dataframes that have some other
+# info we'll want:
+
+peeps<-ls(pattern="people.L")
+peeps<-peeps[3:length(peeps)] #<- drop 75th + 76th sessions
+floof<-ls(pattern="FLOOF.L")
+
+for(i in 1:length(peeps)){
+  suffix<-substr(floof[i],6,10)
+  foo<-get(peeps[i])
+  foo<-foo[,c(1:2,8:12)]
+  bar<-get(floof[i])
+  baz<-merge(foo,bar,by=c("people_id"),
+             all.x=FALSE,all.y=TRUE)
+  assign(paste0("WPSA",suffix),baz)
+  rm(foo,bar,baz)
+}
+
+# Now we should append all these "WPSA" objects into one
+# big multi-session panel data frame:
+
+doofs<-ls(pattern="WPSA.L")
+
+WPSA<-do.call("rbind", mget(doofs))
+
+# Next: In the "sponsor" data frames, there is no
+# information on the "position" variable for the 75th
+# and 76th sessions. As a result, the NBILLSPRIMARY and
+# MEANPOS variables for those terms currently appear 
+# as a "0" for every legislator in those terms. Those 
+# should in fact be coded as missing; I'll do that 
+# here; but since we've already removed those sessions
+# in this analysis, this is commented out:
+# 
+# WPSA$NBillsPrimary<-ifelse(WPSA$session==75,NA,WPSA$NBillsPrimary)
+# WPSA$NBillsPrimary<-ifelse(WPSA$session==76,NA,WPSA$NBillsPrimary)
+# WPSA$MeanPos<-ifelse(WPSA$session==75,NA,WPSA$MeanPos)
+# WPSA$MeanPos<-ifelse(WPSA$session==76,NA,WPSA$MeanPos)
+# WPSA$MedianPos<-ifelse(WPSA$session==75,NA,WPSA$MedianPos)
+# WPSA$MedianPos<-ifelse(WPSA$session==76,NA,WPSA$MedianPos)
+#
+# Now: zap the committees...
+
+WPSA<-WPSA[WPSA$party!="",]
+
+# Reorder the columns:
+
+WPSA<-WPSA[,c(1:2,20,3:19)]
+
+# Sort:
+
+WPSA<-WPSA[order(WPSA$people_id,WPSA$session),]
+
+# Output to a .CSV:
+
+write.csv(WPSA,"Data/WPSA-V24a.csv")
+
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+# BILL-LEVEL DATA:                                 ####
+#
+# Aggregating the SPFAXes to the bill level, then
+# merging them with the "bills" data:
+
+spfaxes<-ls(pattern="SPFAX.L")
+bills<-ls(pattern="bills.L")
+bills<-bills[3:length(bills)] #<- remove 75th and 76th sessions
+
+for(i in 1:length(spfaxes)){
+  suffix<-substr(bills[i],6,10)
+  foo<-get(spfaxes[i])
+  bar<-group_by(foo,bill_id)
+  baz<-summarise(bar,
+                 NCosponsors=n(),
+                 NDems=sum(DEM,na.rm=TRUE),
+                 NGOPs=sum(GOP,na.rm=TRUE),
+                 NFemale=sum(Female,na.rm=TRUE),
+                 NSmallLeaders=sum(LittleLeader,na.rm=TRUE),
+                 NBigLeaders=sum(BigLeader,na.rm=TRUE))
+  qux<-foo[foo$position==1,]
+  qux<-with(qux,data.frame(bill_id=bill_id,
+                           SponsorID=people_id,
+                           SponsorDem=DEM,
+                           SponsorGOP=GOP,
+                           SponsorFemale=Female))
+  quux<-get(bills[i])
+  quuz<-merge(quux,qux,by=c("bill_id"),
+             all.x=TRUE,all.y=TRUE)
+  quuz<-merge(quuz,baz,by=c("bill_id"),
+              all.x=TRUE,all.y=TRUE)
+  assign(paste0("WPSABills",suffix),quuz)
+  rm(foo,bar,baz,qux,quux,quuz)
+}
+
+# Put them all together:
+
+bloofs<-ls(pattern="WPSABills.L")
+
+WPSABills<-do.call("rbind", mget(bloofs))
+
+# Add a session variable:
+
+WPSABills$Session<-75
+WPSABills$Session<-ifelse(WPSABills$session_id==127,76,WPSABills$Session)
+WPSABills$Session<-ifelse(WPSABills$session_id==978,77,WPSABills$Session)
+WPSABills$Session<-ifelse(WPSABills$session_id==1140,78,WPSABills$Session)
+WPSABills$Session<-ifelse(WPSABills$session_id==1437,79,WPSABills$Session)
+WPSABills$Session<-ifelse(WPSABills$session_id==1599,80,WPSABills$Session)
+WPSABills$Session<-ifelse(WPSABills$session_id==1754,81,WPSABills$Session)
+WPSABills$Session<-ifelse(WPSABills$session_id==1981,82,WPSABills$Session)
+
+# Reorder:
+
+WPSABills<-WPSABills[,c(1:2,25,3:24)]
+
+# Sort:
+
+WPSABills<-WPSABills[order(WPSABills$Session,WPSABills$bill_id),]
+
+# Output to a .CSV:
+
+write.csv(WPSABills,"Data/WPSA-Bills-V24a.csv")
+
+# Now go run some regressions, dammit.
